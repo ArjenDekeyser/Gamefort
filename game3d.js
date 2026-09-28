@@ -8,7 +8,7 @@
     const T = THREE, canvas = document.getElementById('canvas'), mapCanvas = document.getElementById('minimapCanvas');
     const mapCtx = mapCanvas.getContext('2d'), menu = document.getElementById('mainMenu'), hud = document.getElementById('hud'), endScreen = document.getElementById('gameOverScreen');
     const HALF = 110, keys = new Set(), clock = new T.Clock(), raycaster = new T.Raycaster();
-    const scene = new T.Scene(); scene.background = new T.Color('#a9bdb0'); scene.fog = new T.Fog('#a9bdb0', 78, 178);
+    const scene = new T.Scene(); scene.background = new T.Color('#7da9bd'); scene.fog = new T.Fog('#d1c9ab', 78, 178);
     const renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.7)); renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputEncoding = T.sRGBEncoding;
@@ -31,6 +31,7 @@
     const mat = {
         ground: new T.MeshStandardMaterial({ color: '#ffffff', roughness: 1 }),
         wood: new T.MeshStandardMaterial({ color: '#b9875b', roughness: .92 }),
+        woodLight: new T.MeshStandardMaterial({ color: '#d0a16b', roughness: .9 }),
         roof: new T.MeshStandardMaterial({ color: '#66584a', roughness: .95 }),
         trunk: new T.MeshStandardMaterial({ color: '#72553a', roughness: 1 }),
         leaf: new T.MeshStandardMaterial({ color: '#47744c', roughness: 1 }),
@@ -49,7 +50,13 @@
     let state = 'menu', player, bots = [], botParts = [], loot = [], walls = [], obstacles = [], tracers = [];
     let storm = { x: 0, z: 0, radius: 92, timer: 30, phase: 0 }, stormRing;
     let yaw = 0, pitch = 0, firing = false, touchFiring = false, touchLook = null, stick = { x: 0, y: 0 };
-    let selected = 0, reserve = 144, materials = 90, medkits = 2, kills = 0, damageTotal = 0, lastShot = 0, reloadUntil = 0;
+    let selected = 0, buildIndex = 0, buildModeUntil = 0, dashReadyAt = 0, reserve = 144, materials = 90, medkits = 2, kills = 0, damageTotal = 0, lastShot = 0, reloadUntil = 0;
+    const buildPieces = [
+        { label: 'MUUR', cost: 10, size: [5.4, 3.2, .55], height: 1.6, blocksMovement: true },
+        { label: 'LAGE MUUR', cost: 8, size: [5.4, 1.6, .5], height: .8, blocksMovement: true },
+        { label: 'VLOER', cost: 12, size: [5.4, .3, 5.4], height: .15 },
+        { label: 'HELLING', cost: 15, size: [5.4, .3, 5.4], height: 1.35, tilt: Math.PI / 6 }
+    ];
     let difficulty = 'Normaal', soundOn = true, audio, toast = '', toastUntil = 0, feed = [], inventoryKey = '';
     const rand = (a, b) => a + Math.random() * (b - a), clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -58,6 +65,21 @@
 
     function mesh(geometry, material, parent, x, y, z, cast = true) {
         const object = new T.Mesh(geometry, material); object.position.set(x, y, z); object.castShadow = cast; object.receiveShadow = true; parent.add(object); return object;
+    }
+    function createSky() {
+        const skyCanvas = document.createElement('canvas'); skyCanvas.width = 1024; skyCanvas.height = 512;
+        const context = skyCanvas.getContext('2d'), gradient = context.createLinearGradient(0, 0, 0, 512);
+        gradient.addColorStop(0, '#4e83a7'); gradient.addColorStop(.5, '#89b2c0'); gradient.addColorStop(.78, '#d5cfb3'); gradient.addColorStop(1, '#dfc29c');
+        context.fillStyle = gradient; context.fillRect(0, 0, 1024, 512);
+        for (let i = 0; i < 80; i++) {
+            const x = Math.random() * 1024, y = 95 + Math.random() * 220, rx = 24 + Math.random() * 100, ry = 8 + Math.random() * 22;
+            const cloud = context.createRadialGradient(x, y, 1, x, y, rx);
+            cloud.addColorStop(0, 'rgba(255,250,230,.19)'); cloud.addColorStop(.55, 'rgba(255,250,230,.09)'); cloud.addColorStop(1, 'rgba(255,250,230,0)');
+            context.fillStyle = cloud; context.beginPath(); context.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); context.fill();
+        }
+        const texture = new T.CanvasTexture(skyCanvas); texture.encoding = T.sRGBEncoding;
+        const dome = new T.Mesh(new T.SphereGeometry(220, 48, 32), new T.MeshBasicMaterial({ map: texture, side: T.BackSide, fog: false, depthWrite: false }));
+        scene.add(dome);
     }
     function label(text, x, z) {
         const c = document.createElement('canvas'); c.width = 512; c.height = 128; const g = c.getContext('2d');
@@ -87,15 +109,19 @@
     }
     function createGunModel() {
         const gun = new T.Group();
-        mesh(new T.BoxGeometry(.16, .17, .82), new T.MeshStandardMaterial({ color: '#344239', metalness: .45, roughness: .45 }), gun, 0, 0, -.24, false);
-        mesh(new T.BoxGeometry(.09, .1, .36), new T.MeshStandardMaterial({ color: '#8a9b84', metalness: .45, roughness: .4 }), gun, 0, .03, -.73, false);
-        mesh(new T.BoxGeometry(.12, .23, .17), new T.MeshStandardMaterial({ color: '#9a7350' }), gun, 0, -.17, -.25, false);
+        const metal = new T.MeshStandardMaterial({ color: '#344239', metalness: .45, roughness: .45 });
+        const trim = new T.MeshStandardMaterial({ color: '#8a9b84', metalness: .4, roughness: .42 });
+        mesh(new T.BoxGeometry(.17, .18, .68), metal, gun, 0, 0, -.24, false);
+        mesh(new T.CylinderGeometry(.045, .055, .58, 10), trim, gun, 0, .025, -.82, false).rotation.x = Math.PI / 2;
+        mesh(new T.BoxGeometry(.1, .25, .17), new T.MeshStandardMaterial({ color: '#9a7350' }), gun, 0, -.18, -.24, false);
+        mesh(new T.BoxGeometry(.13, .29, .16), metal, gun, 0, -.22, -.02, false);
+        mesh(new T.BoxGeometry(.12, .1, .2), trim, gun, 0, .13, -.25, false);
+        mesh(new T.CylinderGeometry(.09, .09, .07, 12), metal, gun, 0, .15, -.27, false);
         gun.position.set(.38, -.31, -.62); camera.add(gun);
     }
     function createWorld() {
+        createSky();
         const floor = mesh(new T.PlaneGeometry(220, 220), mat.ground, scene, 0, -.13, 0, false); floor.rotation.x = -Math.PI / 2;
-        const road = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(-110, .02, -30), new T.Vector3(-60, .02, -20), new T.Vector3(-10, .02, 5), new T.Vector3(40, .02, 28), new T.Vector3(110, .02, 12)]), 90, 2.5, 8, false), new T.MeshStandardMaterial({ color: '#baa77d', roughness: 1 })); scene.add(road);
-        const crossing = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(-24, .03, -110), new T.Vector3(-16, .03, -50), new T.Vector3(8, .03, 15), new T.Vector3(18, .03, 60), new T.Vector3(8, .03, 110)]), 80, 1.8, 8), new T.MeshStandardMaterial({ color: '#baa77d', roughness: 1 })); scene.add(crossing);
         places.forEach((p, index) => {
             label(p.name, p.x, p.z - 11);
             for (let i = 0; i < 5; i++) building(p.x + (i % 3 - 1) * 8.5 + rand(-1, 1), p.z + (Math.floor(i / 3) - .5) * 8 + rand(-1, 1), i % 2 ? p.color : ['#c58f6d', '#b47b62', '#d0b781'][index % 3], rand(5.5, 8), rand(5, 7), rand(3.8, 6));
@@ -111,10 +137,20 @@
     }
     function makeBot(bot) {
         const group = new T.Group(); group.position.set(bot.x, 0, bot.z); scene.add(group); bot.mesh = group;
-        const shirt = new T.MeshStandardMaterial({ color: bot.color, roughness: .75 });
-        const torso = mesh(new T.CylinderGeometry(.52, .48, 1.25, 9), shirt, group, 0, 1.18, 0);
-        const head = mesh(new T.SphereGeometry(.34, 12, 10), mat.skin, group, 0, 2.07, 0);
-        mesh(new T.BoxGeometry(.9, .19, .43), new T.MeshStandardMaterial({ color: '#38463c' }), group, 0, 1.04, .12);
+        const shirt = new T.MeshStandardMaterial({ color: bot.color, roughness: .75 }), pants = new T.MeshStandardMaterial({ color: '#39453e', roughness: .9 });
+        const torso = mesh(new T.CylinderGeometry(.47, .55, 1.12, 14), shirt, group, 0, 1.28, 0);
+        const head = mesh(new T.SphereGeometry(.34, 16, 12), mat.skin, group, 0, 2.08, 0);
+        for (const side of [-1, 1]) {
+            mesh(new T.SphereGeometry(.25, 10, 8), shirt, group, side * .43, 1.61, 0);
+            const arm = mesh(new T.CylinderGeometry(.13, .18, .66, 10), shirt, group, side * .49, 1.29, .23); arm.rotation.x = Math.PI / 2; arm.rotation.z = side * -.1;
+            mesh(new T.CylinderGeometry(.17, .22, .72, 10), pants, group, side * .24, .47, 0);
+            mesh(new T.BoxGeometry(.32, .18, .48), pants, group, side * .24, .12, .08);
+        }
+        mesh(new T.BoxGeometry(.72, .57, .18), new T.MeshStandardMaterial({ color: '#59654a', roughness: .85 }), group, 0, 1.3, .39);
+        mesh(new T.BoxGeometry(.46, .62, .3), pants, group, 0, 1.36, -.4);
+        const helmet = mesh(new T.SphereGeometry(.38, 14, 10), new T.MeshStandardMaterial({ color: '#c29d5d', roughness: .6 }), group, 0, 2.34, 0); helmet.scale.set(1.12, .44, 1.1);
+        mesh(new T.BoxGeometry(.13, .13, .68), new T.MeshStandardMaterial({ color: '#303a35', metalness: .35, roughness: .55 }), group, 0, 1.08, .68);
+        mesh(new T.CylinderGeometry(.035, .045, .46, 8), pants, group, 0, 1.1, 1.2).rotation.x = Math.PI / 2;
         torso.userData.bot = bot; head.userData.bot = bot; bot.hitParts = [torso, head]; botParts.push(torso, head);
         const bar = new T.Group(); bar.position.set(0, 2.7, 0); group.add(bar); bot.bar = bar;
         mesh(new T.PlaneGeometry(1.1, .12), new T.MeshBasicMaterial({ color: '#24352e', side: T.DoubleSide }), bar, 0, 0, 0, false);
@@ -138,16 +174,16 @@
     }
     function startGame() {
         difficulty = document.getElementById('difficultySelect')?.value || 'Normaal'; clearMatch(); createLoot();
-        const drop = places[Math.floor(Math.random() * places.length)]; player = { x: drop.x + rand(-3, 3), z: drop.z + rand(3, 8), hp: 100, shield: 50, invulnerable: 0, weapons: [{ ...guns[0], ammo: 24 }], reloading: false };
+        const drop = places[Math.floor(Math.random() * places.length)]; player = { x: drop.x + rand(-3, 3), z: drop.z + rand(3, 8), hp: 100, shield: 50, invulnerable: 0, jumpHeight: 0, jumpVelocity: 0, grounded: true, weapons: [{ ...guns[0], ammo: 24 }], reloading: false };
         const count = difficulty === 'Rustig' ? 12 : difficulty === 'Heftig' ? 20 : 16;
         for (let i = 0; i < count; i++) {
             let x, z; do { x = rand(-98, 98); z = rand(-98, 98); } while (Math.hypot(x - player.x, z - player.z) < 30);
-            const bot = { name: ['Koraal', 'Bram', 'Pixel', 'Vonk', 'Riff', 'Nova', 'Maan', 'Flint', 'Echo', 'Sproet'][i % 10], x, z, hp: 100, shield: Math.random() > .5 ? 25 : 0, speed: rand(2.1, 3), nextShot: rand(1, 3), alive: true, dir: rand(-3, 3), color: ['#bb6956', '#8673ae', '#4d8991', '#a47a44'][i % 4] };
+            const bot = { name: ['Koraal', 'Bram', 'Pixel', 'Vonk', 'Riff', 'Nova', 'Maan', 'Flint', 'Echo', 'Sproet'][i % 10], x, z, hp: 100, shield: Math.random() > .5 ? 25 : 0, speed: rand(2.1, 3), nextShot: rand(1, 3), alive: true, dir: rand(-3, 3), strafe: Math.random() < .5 ? -1 : 1, phase: rand(0, 6), color: ['#bb6956', '#8673ae', '#4d8991', '#a47a44'][i % 4] };
             bots.push(bot); makeBot(bot);
         }
         storm = { x: 0, z: 0, radius: 92, timer: 30, phase: 0 };
         stormRing.position.set(0, .3, 0); stormRing.scale.setScalar(storm.radius);
-        selected = 0; reserve = 144; materials = 90; medkits = 2; kills = 0; damageTotal = 0; feed = []; inventoryKey = ''; lastShot = 0; reloadUntil = 0;
+        selected = 0; buildIndex = 0; dashReadyAt = 0; reserve = 144; materials = 90; medkits = 2; kills = 0; damageTotal = 0; feed = []; inventoryKey = ''; lastShot = 0; reloadUntil = 0;
         yaw = 0; pitch = -.035; camera.position.set(player.x, 1.72, player.z); camera.rotation.set(pitch, yaw, 0);
         menu.classList.add('hidden'); endScreen.classList.add('hidden'); endScreen.classList.remove('active'); hud.style.display = 'block'; state = 'playing';
         document.getElementById('touchControls').classList.toggle('visible', innerWidth < 760); announce('VERZAMEL UITRUSTING · BLIJF BINNEN DE ZONE');
@@ -177,20 +213,58 @@
         const x = player.x + (fx * f + rx * s) / length * speed, z = player.z + (fz * f + rz * s) / length * speed;
         if (canMove(x, player.z)) player.x = x; if (canMove(player.x, z)) player.z = z;
         player.x = clamp(player.x, -108, 108); player.z = clamp(player.z, -108, 108);
-        camera.position.set(player.x, 1.72, player.z); camera.rotation.set(pitch, yaw, 0);
+        if (!player.grounded) {
+            player.jumpVelocity -= 20 * dt; player.jumpHeight = Math.max(0, player.jumpHeight + player.jumpVelocity * dt);
+            if (player.jumpHeight === 0) { player.grounded = true; player.jumpVelocity = 0; }
+        }
+        camera.position.set(player.x, 1.72 + player.jumpHeight, player.z); camera.rotation.set(pitch, yaw, 0);
         if (firing || touchFiring) shoot(performance.now());
         if (player.reloading && performance.now() >= reloadUntil) finishReload();
         if (player.invulnerable > 0) player.invulnerable -= dt;
     }
-    function canMove(x, z) { return !obstacles.some(o => Math.abs(x - o.x) < o.hx + .4 && Math.abs(z - o.z) < o.hz + .4) && !walls.some(w => Math.abs(x - w.x) < 2.8 && Math.abs(z - w.z) < .65); }
+    function jump() { if (!player.grounded) return; player.grounded = false; player.jumpVelocity = 8; }
+    function dash() {
+        const now = performance.now(); if (state !== 'playing' || now < dashReadyAt) return;
+        dashReadyAt = now + 1500; const steps = 20, dx = -Math.sin(yaw) * 8 / steps, dz = -Math.cos(yaw) * 8 / steps;
+        for (let i = 0; i < steps; i++) { if (!canMove(player.x + dx, player.z + dz)) break; player.x = clamp(player.x + dx, -108, 108); player.z = clamp(player.z + dz, -108, 108); }
+        player.invulnerable = Math.max(player.invulnerable, .2); tone(280, .07); announce('DASH');
+    }
+    function insideWall(wall, x, z) {
+        if (!wall.blocksMovement) return false;
+        const dx = x - wall.x, dz = z - wall.z, cosine = Math.cos(wall.yaw), sine = Math.sin(wall.yaw);
+        return Math.abs(dx * cosine - dz * sine) < wall.hx && Math.abs(dx * sine + dz * cosine) < wall.hz;
+    }
+    function canMove(x, z) { return !obstacles.some(o => Math.abs(x - o.x) < o.hx + .4 && Math.abs(z - o.z) < o.hz + .4) && !walls.some(w => insideWall(w, x, z)); }
+    function canSeeTarget(from, to) {
+        const length = distance(from, to), steps = Math.ceil(length / 2);
+        for (let i = 2; i < steps; i++) {
+            const x = from.x + (to.x - from.x) * i / steps, z = from.z + (to.z - from.z) * i / steps;
+            if (obstacles.some(obstacle => Math.abs(x - obstacle.x) < obstacle.hx && Math.abs(z - obstacle.z) < obstacle.hz) || walls.some(wall => insideWall(wall, x, z))) return false;
+        }
+        return true;
+    }
+    function moveBot(bot, dx, dz) {
+        if (canMove(bot.x + dx, bot.z + dz)) { bot.x += dx; bot.z += dz; }
+        else if (canMove(bot.x + dx, bot.z)) bot.x += dx;
+        else if (canMove(bot.x, bot.z + dz)) bot.z += dz;
+        else bot.strafe *= -1;
+    }
     function updateBot(bot, dt, now) {
         if (!bot.alive) return;
-        const pd = distance(bot, player); let target = pd < 34 ? player : null, d = target ? pd : Infinity;
+        const pd = distance(bot, player); let target = pd < 48 ? player : null, d = target ? pd : Infinity;
         bots.forEach(other => { if (!other.alive || other === bot) return; const nd = distance(bot, other); if (nd < d) { target = other; d = nd; } });
-        if (target && d < 44) {
-            const dx = target.x - bot.x, dz = target.z - bot.z; bot.mesh.rotation.y = Math.atan2(dx, dz);
-            if (d > 7) { const x = bot.x + dx / d * bot.speed * dt, z = bot.z + dz / d * bot.speed * dt; if (canMove(x, bot.z)) bot.x = x; if (canMove(bot.x, z)) bot.z = z; }
-            if (now > bot.nextShot && d < 27) { bot.nextShot = now + rand(1.3, difficulty === 'Heftig' ? 1.7 : 2.4); if (target === player) hurtPlayer(difficulty === 'Heftig' ? 8 : 5); else damageBot(target, 12, false); }
+        if (target && d < 54) {
+            const dx = target.x - bot.x, dz = target.z - bot.z, invDistance = 1 / Math.max(d, .01); bot.mesh.rotation.y = Math.atan2(dx, dz);
+            const desired = target === player ? 18 : 9, retreatAt = bot.hp < 35 ? desired + 5 : desired - 4;
+            const forward = d > desired + 4 ? 1 : d < retreatAt ? -.8 : 0, strafe = bot.strafe * (.28 + Math.sin(now * 1.8 + bot.phase) * .38);
+            moveBot(bot, (dx * invDistance * forward - dz * invDistance * strafe) * bot.speed * dt, (dz * invDistance * forward + dx * invDistance * strafe) * bot.speed * dt);
+            if (now > bot.nextShot) {
+                bot.nextShot = now + rand(.9, difficulty === 'Heftig' ? 1.35 : 1.9);
+                const range = difficulty === 'Heftig' ? 38 : 31, accuracy = difficulty === 'Heftig' ? .7 : difficulty === 'Rustig' ? .38 : .52;
+                if (d < range && canSeeTarget(bot, target) && Math.random() < accuracy) {
+                    if (target === player) hurtPlayer(difficulty === 'Heftig' ? 8 : 5); else damageBot(target, 12, false);
+                }
+            }
         } else { bot.dir += rand(-.035, .035); const x = bot.x + Math.sin(bot.dir) * bot.speed * .4 * dt, z = bot.z + Math.cos(bot.dir) * bot.speed * .4 * dt; if (canMove(x, z)) { bot.x = x; bot.z = z; } else bot.dir += 2; }
         bot.mesh.position.set(bot.x, 0, bot.z); bot.bar.lookAt(camera.position);
         bot.fill.scale.x = Math.max(.01, bot.hp / 100); bot.fill.position.x = -.52 * (1 - bot.hp / 100);
@@ -201,7 +275,7 @@
         if (gun.ammo <= 0) { reload(); return; } lastShot = now; gun.ammo--;
         for (let i = 0; i < (gun.pellets || 1); i++) {
             const direction = new T.Vector3(rand(-gun.spread, gun.spread), rand(-gun.spread, gun.spread), -1).applyQuaternion(camera.quaternion).normalize();
-            raycaster.set(camera.position, direction); const hits = raycaster.intersectObjects([...botParts.filter(part => part.userData.bot?.alive), ...walls.map(w => w.mesh)], false);
+            raycaster.set(camera.position, direction); const hits = raycaster.intersectObjects([...botParts.filter(part => part.userData.bot?.alive), ...walls.map(w => w.mesh)], true);
             const end = hits.length && hits[0].distance < 85 ? hits[0].point : camera.position.clone().addScaledVector(direction, 65);
             const tracer = new T.Line(new T.BufferGeometry().setFromPoints([camera.position.clone(), end]), new T.LineBasicMaterial({ color: gun.color, transparent: true, opacity: .84 })); scene.add(tracer); tracers.push({ mesh: tracer, life: .075 });
             const target = hits.length && hits[0].distance < 85 ? hits[0].object.userData.bot : null;
@@ -245,11 +319,24 @@
         });
     }
     function buildWall() {
-        if (materials < 10) { announce('NIET GENOEG MATERIAAL'); return; }
-        const x = player.x - Math.sin(yaw) * 3.2, z = player.z - Math.cos(yaw) * 3.2;
-        const object = new T.Mesh(new T.BoxGeometry(5.4, 3.2, .55), mat.wood); object.position.set(x, 1.6, z); object.rotation.y = yaw; object.castShadow = true; scene.add(object);
-        walls.push({ mesh: object, x, z, hp: 130, owner: player, life: 45 }); materials -= 10; tone(260, .07);
+        const piece = buildPieces[buildIndex];
+        if (materials < piece.cost) { announce('NIET GENOEG MATERIAAL'); return; }
+        const x = player.x - Math.sin(yaw) * 3.8, z = player.z - Math.cos(yaw) * 3.8, group = new T.Group();
+        group.position.set(x, piece.height, z); group.rotation.set(piece.tilt || 0, yaw, 0);
+        const base = mesh(new T.BoxGeometry(...piece.size), mat.wood, group, 0, 0, 0); base.castShadow = true;
+        if (piece.blocksMovement) {
+            const plankCount = piece.label === 'MUUR' ? 6 : 3, plankHeight = piece.size[1] / plankCount;
+            for (let i = 0; i < plankCount; i++) mesh(new T.BoxGeometry(piece.size[0] - .18, plankHeight - .035, piece.size[2] + .04), i % 2 ? mat.wood : mat.woodLight, group, 0, -piece.size[1] / 2 + plankHeight * (i + .5), 0, false);
+            for (const side of [-1, 1]) mesh(new T.BoxGeometry(.16, piece.size[1] + .08, piece.size[2] + .12), mat.woodLight, group, side * (piece.size[0] / 2 - .12), 0, 0, false);
+        } else if (piece.label === 'VLOER') {
+            for (let i = -2; i <= 2; i++) mesh(new T.BoxGeometry(.98, .1, piece.size[2] - .12), i % 2 ? mat.woodLight : mat.wood, group, i * 1.04, .2, 0, false);
+        } else {
+            for (let i = -2; i <= 2; i++) mesh(new T.BoxGeometry(piece.size[0] - .12, .1, .16), mat.woodLight, group, 0, .2, i * 1.04, false);
+        }
+        scene.add(group); walls.push({ mesh: group, x, z, hp: 130, owner: player, life: 45, blocksMovement: !!piece.blocksMovement, hx: piece.size[0] / 2 + .2, hz: piece.size[2] / 2 + .2, yaw });
+        materials -= piece.cost; tone(260, .07);
     }
+    function cycleBuild() { buildIndex = (buildIndex + 1) % buildPieces.length; buildModeUntil = performance.now() + 1400; announce(`BOUWTYPE · ${buildPieces[buildIndex].label}`); }
     function reload() { const gun = player.weapons[selected]; if (!gun || player.reloading || gun.ammo >= gun.mag || !reserve) return; player.reloading = true; reloadUntil = performance.now() + gun.reload; announce('HERLADEN...'); }
     function finishReload() { const gun = player.weapons[selected], count = Math.min(gun.mag - gun.ammo, reserve); gun.ammo += count; reserve -= count; player.reloading = false; reloadUntil = 0; }
     function heal() { if (!medkits || player.hp >= 100) { announce(medkits ? 'GEZONDHEID IS VOL' : 'GEEN EHBO-SETS'); return; } medkits--; player.hp = Math.min(100, player.hp + 45); announce('EHBO GEBRUIKT · +45 HP'); tone(520, .13); }
@@ -262,6 +349,7 @@
         if (inventoryKey !== key) { inventoryKey = key; document.getElementById('inventoryList').innerHTML = player.weapons.map((gun, i) => `<div class="inventory-item ${i === selected ? 'selected' : ''}" data-slot="${i}"><span class="slot-num">${i + 1}</span><span class="inventory-item-name"><b>${gun.name}</b><small>${gun.rarity}</small></span><span class="inventory-item-count">${gun.ammo}</span></div>`).join('') + `<div class="inventory-item utility-row"><span>EHBO</span><span class="inventory-item-count">${medkits} ×</span></div>`; }
         const gun = player.weapons[selected]; document.getElementById('weaponInfo').innerHTML = `<span>${gun.kind}</span><strong>${gun.ammo}</strong><i>/ ${reserve}</i>${player.reloading ? '<em>HERLADEN</em>' : ''}`;
         const pop = document.getElementById('gameToast'); pop.textContent = toast; pop.classList.toggle('visible', now * 1000 < toastUntil); document.getElementById('touchHeal').textContent = `EHBO ${medkits}`;
+        const buildMode = document.getElementById('buildMode'); buildMode.textContent = `BOUW · ${buildPieces[buildIndex].label}`; buildMode.classList.toggle('active', keys.has('e') || now * 1000 < buildModeUntil);
         feed = feed.filter(item => (item.time -= dt) > 0); document.getElementById('killFeed').innerHTML = feed.map(item => `<div class="kill-entry">${item.text}</div>`).join('');
     }
     function drawMap() {
@@ -273,14 +361,15 @@
     function updateInterface() {
         document.querySelector('.inventory-title').textContent = 'UITRUSTING'; document.querySelectorAll('.stat-label')[0].textContent = 'GEZONDHEID'; document.querySelectorAll('.stat-label')[1].textContent = 'SCHILD';
         document.querySelector('.players-left').innerHTML = '<div class="eyebrow">OVERLEVENDEN</div><div class="players-count" id="playersLeft">17</div>';
-        document.querySelector('.controls-display').innerHTML = '<div class="control-heading">VELDHANDLEIDING <span>01</span></div><div class="control-item"><span class="control-key">WASD / ZQSD</span> Bewegen</div><div class="control-item"><span class="control-key">SHIFT</span> Sprinten</div><div class="control-item"><span class="control-key">MUIS</span> Kijken / vuren</div><div class="control-item"><span class="control-key">1 — 5</span> Wapen kiezen</div><div class="control-item"><span class="control-key">R</span> Herladen <span class="control-key">H</span> EHBO</div><div class="control-item"><span class="control-key">E</span> Houten muur</div><div class="control-item"><span class="control-key">SPATIE</span> Ontwijkdash</div><div class="control-item"><span class="control-key">ESC</span> Pauze</div>';
+        document.querySelector('.controls-display').innerHTML = '<div class="control-heading">VELDHANDLEIDING <span>01</span></div><div class="control-item"><span class="control-key">WASD / ZQSD</span> Bewegen</div><div class="control-item"><span class="control-key">SHIFT</span> Sprinten</div><div class="control-item"><span class="control-key">MUIS</span> Kijken / vuren</div><div class="control-item"><span class="control-key">1 — 5</span> Wapen kiezen</div><div class="control-item"><span class="control-key">R / H</span> Herladen / EHBO</div><div class="control-item"><span class="control-key">B / E</span> Bouwdeel / plaatsen</div><div class="control-item"><span class="control-key">SPATIE</span> Springen</div><div class="control-item"><span class="control-key">R-MUIS</span> Dash</div><div class="control-item"><span class="control-key">ESC</span> Pauze</div>';
         document.querySelector('#mainMenu .menu-content').innerHTML = '<div class="menu-kicker"><i></i> SEIZOEN 01 · DE GROENE GRENS</div><h1 class="game-title">GAMEFORT</h1><p class="menu-subtitle">LAATSTE ZONE</p><div class="menu-rule"></div><p class="menu-description">Een eiland. Een storm. Blijf als laatste over.</p><div class="menu-form"><label for="difficultySelect">TEGENSTANDERS</label><select id="difficultySelect"><option>Rustig</option><option selected>Normaal</option><option>Heftig</option></select></div><button class="menu-button primary-button" onclick="startGame()"><span>DROP HET EILAND OP</span><b>→</b></button><button class="sound-button" id="soundToggle" onclick="toggleSound()">♫ GELUID AAN</button><div class="menu-foot">16 TEGENSTANDERS · 6 LANDINGSZONES · 1 KAMPIOEN</div>';
         document.querySelector('#gameOverScreen .game-over-content').innerHTML = '<div class="menu-kicker">RUN VOLTOOID</div><div class="game-over-title" id="gameOverTitle">EINDE VAN DE RUN</div><div class="game-over-stats"><div><span>PLAATS</span><strong id="finalPlace">-</strong></div><div><span>UITGESCHAKELD</span><strong id="finalKills">0</strong></div><div><span>SCHADE</span><strong id="finalDamage">0</strong></div></div><button class="game-over-button" onclick="startGame()">OPNIEUW DROPPEN →</button><button class="sound-button" onclick="returnToMenu()">TERUG NAAR MENU</button>';
         const bar = document.createElement('div'); bar.className = 'match-bar'; bar.innerHTML = '<div class="match-brand">GF <span>/ VELDOPERATIE</span></div><div class="match-stats"><span><i></i> OVERLEVENDEN <b id="playersLeftTop">17</b></span><span>ELIMINATIES <b id="killValue">0</b></span><span>MATERIAAL <b id="materialsValue">90</b></span></div><div class="match-zone">STORM SLUIT OVER <b id="stormTimer">30s</b></div>'; hud.appendChild(bar);
         [['weaponInfo', 'weapon-info'], ['gameToast', 'game-toast'], ['buildMode', 'build-mode']].forEach(([id, cls]) => { const el = document.createElement('div'); el.id = id; el.className = cls; hud.appendChild(el); }); document.getElementById('buildMode').textContent = 'BOUWEN · HOUTEN MUUR';
-        const touch = document.createElement('div'); touch.id = 'touchControls'; touch.innerHTML = '<div class="touch-stick" id="touchStick"><span></span></div><button class="touch-action touch-fire" id="touchFire">VUUR</button><button class="touch-action touch-build" id="touchBuild">BOUW</button><button class="touch-action touch-heal" id="touchHeal">EHBO</button>'; hud.appendChild(touch);
+        const touch = document.createElement('div'); touch.id = 'touchControls'; touch.innerHTML = '<div class="touch-stick" id="touchStick"><span></span></div><button class="touch-action touch-fire" id="touchFire">VUUR</button><button class="touch-action touch-build" id="touchBuild">BOUW</button><button class="touch-action touch-cycle" id="touchCycleBuild">MODE</button><button class="touch-action touch-heal" id="touchHeal">EHBO</button><button class="touch-action touch-jump" id="touchJump">SPRING</button><button class="touch-action touch-dash" id="touchDash">DASH</button>'; hud.appendChild(touch);
         const fire = document.getElementById('touchFire'); fire.addEventListener('pointerdown', e => { e.preventDefault(); touchFiring = true; }); fire.addEventListener('pointerup', () => touchFiring = false);
-        document.getElementById('touchBuild').addEventListener('click', buildWall); document.getElementById('touchHeal').addEventListener('click', heal);
+        document.getElementById('touchBuild').addEventListener('click', buildWall); document.getElementById('touchCycleBuild').addEventListener('click', cycleBuild); document.getElementById('touchHeal').addEventListener('click', heal);
+        document.getElementById('touchJump').addEventListener('click', jump); document.getElementById('touchDash').addEventListener('click', dash);
         const pad = document.getElementById('touchStick'); pad.addEventListener('pointerdown', e => { pad.setPointerCapture(e.pointerId); moveStick(e); }); pad.addEventListener('pointermove', e => { if (e.buttons) moveStick(e); }); pad.addEventListener('pointerup', () => { stick = { x: 0, y: 0 }; pad.style.setProperty('--sx', '0px'); pad.style.setProperty('--sy', '0px'); });
         function moveStick(e) { const r = pad.getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2, l = Math.max(1, Math.hypot(x, y)), m = Math.min(1, 38 / l); stick = { x: clamp(x / 38, -1, 1), y: clamp(y / 38, -1, 1) }; pad.style.setProperty('--sx', `${x * m}px`); pad.style.setProperty('--sy', `${y * m}px`); }
         document.getElementById('inventoryList').addEventListener('click', e => { const item = e.target.closest('[data-slot]'); if (item) { selected = Number(item.dataset.slot); inventoryKey = ''; } });
@@ -302,16 +391,16 @@
         if (state === 'paused' && key === 'enter') { state = 'playing'; clock.getDelta(); requestLock(); return; }
         if (state !== 'playing') return;
         if (key === 'escape') { document.exitPointerLock?.(); state = 'paused'; announce('PAUZE · DRUK OP ENTER OM VERDER TE SPELEN'); }
-        else if (key === 'r') reload(); else if (key === 'h') heal(); else if (key === 'e') buildWall();
+        else if (key === 'r') reload(); else if (key === 'h') heal(); else if (key === 'e') buildWall(); else if (key === 'b') cycleBuild();
         else if (key >= '1' && key <= '5') { selected = Math.min(Number(key) - 1, player.weapons.length - 1); player.reloading = false; reloadUntil = 0; inventoryKey = ''; }
-        else if (key === ' ') { const x = clamp(player.x - Math.sin(yaw) * 5, -108, 108), z = clamp(player.z - Math.cos(yaw) * 5, -108, 108); if (canMove(x, player.z)) player.x = x; if (canMove(player.x, z)) player.z = z; player.invulnerable = .28; }
+        else if (key === ' ') jump();
     });
     window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase())); window.addEventListener('blur', () => { keys.clear(); firing = false; touchFiring = false; });
     window.addEventListener('mousemove', e => { if (state !== 'playing' || e.target.closest?.('#touchControls')) return; yaw -= (e.movementX || 0) * .0022; pitch = clamp(pitch - (e.movementY || 0) * .0018, -1, .78); });
     canvas.addEventListener('click', () => { if (state === 'playing' && !document.pointerLockElement) requestLock(); });
     window.addEventListener('pointerdown', e => {
         if (e.pointerType === 'touch') { if (!e.target.closest?.('#touchControls')) touchLook = { x: e.clientX, y: e.clientY }; return; }
-        if (e.button === 0 && state === 'playing' && !e.target.closest?.('button, .inventory, .minimap')) firing = true;
+        if (state === 'playing' && !e.target.closest?.('button, .inventory, .minimap')) { if (e.button === 2) dash(); else if (e.button === 0) firing = true; }
     });
     window.addEventListener('pointermove', e => {
         if (e.pointerType !== 'touch' || !touchLook || state !== 'playing') return;
