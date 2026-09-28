@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gamefort - Battle Royale</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #000;
+            overflow: hidden;
+            color: #fff;
+        }
+
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* HUD Overlay */
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Minimap */
+        .minimap {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 150px;
+            height: 150px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00d4ff;
+            border-radius: 5px;
+            pointer-events: auto;
+        }
+
+        .minimap-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Health/Ammo Bar */
+        .player-stats {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #00d4ff;
+            min-width: 250px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .stat-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            font-weight: bold;
+            color: #00d4ff;
+            min-width: 100px;
+        }
+
+        .stat-bar {
+            flex: 1;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            margin: 0 10px;
+            overflow: hidden;
+        }
+
+        .stat-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.2s ease;
+        }
+
+        .health-bar .stat-bar-fill {
+            background: #00ff00;
+        }
+
+        .shield-bar .stat-bar-fill {
+            background: #00d4ff;
+        }
+
+        .stat-value {
+            min-width: 40px;
+            text-align: right;
+        }
+
+        /* Inventory */
+        .inventory {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            border-right: 4px solid #ff6b00;
+            min-width: 250px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .inventory-title {
+            color: #ff6b00;
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .inventory-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            font-size: 12px;
+            border-left: 3px solid #ff6b00;
+        }
+
+        .inventory-item-name {
+            flex: 1;
+        }
+
+        .inventory-item-count {
+            background: rgba(255, 107, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+
+        /* Crosshair */
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 30px;
+            pointer-events: none;
+        }
+
+        .crosshair-line {
+            position: absolute;
+            background: rgba(0, 212, 255, 0.6);
+        }
+
+        .crosshair-line-h {
+            width: 10px;
+            height: 2px;
+            top: 50%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .crosshair-line-v {
+            width: 2px;
+            height: 10px;
+            top: 50%;
+            left: 50%;
+            transform: translateY(-50%);
+        }
+
+        /* Kill Feed */
+        .kill-feed {
+            position: absolute;
+            top: 20px;
+            right: 180px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 300px;
+            border-right: 3px solid #ff0000;
+        }
+
+        .kill-entry {
+            font-size: 12px;
+            color: #fff;
+            margin-bottom: 5px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .kill-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .killer-name {
+            color: #ff6b00;
+            font-weight: bold;
+        }
+
+        .victim-name {
+            color: #ff0000;
+            font-weight: bold;
+        }
+
+        /* Storm Warning */
+        .storm-warning {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            background: rgba(255, 0, 0, 0.2);
+            border: 2px solid #ff0000;
+            border-radius: 10px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .storm-warning.active {
+            opacity: 1;
+        }
+
+        .storm-warning-text {
+            font-size: 20px;
+            font-weight: bold;
+            color: #ff0000;
+        }
+
+        /* Main Menu */
+        .main-menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            pointer-events: auto;
+        }
+
+        .menu-content {
+            text-align: center;
+        }
+
+        .game-title {
+            font-size: 60px;
+            font-weight: bold;
+            background: linear-gradient(45deg, #00d4ff, #ff6b00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 30px;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+
+        .menu-button {
+            padding: 15px 40px;
+            font-size: 18px;
+            margin: 10px;
+            background: linear-gradient(45deg, #00d4ff, #0099cc);
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            pointer-events: auto;
+        }
+
+        .menu-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Game Over Screen */
+        .game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            pointer-events: auto;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        .game-over-screen.active {
+            opacity: 1;
+        }
+
+        .game-over-content {
+            text-align: center;
+        }
+
+        .game-over-title {
+            font-size: 50px;
+            font-weight: bold;
+            color: #ff0000;
+            margin-bottom: 20px;
+        }
+
+        .game-over-stats {
+            font-size: 18px;
+            color: #00d4ff;
+            margin-bottom: 30px;
+        }
+
+        .game-over-button {
+            padding: 15px 40px;
+            font-size: 18px;
+            margin: 10px;
+            background: linear-gradient(45deg, #ff6b00, #ff0000);
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            pointer-events: auto;
+        }
+
+        .game-over-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 107, 0, 0.8);
+        }
+
+        /* Controls Display */
+        .controls-display {
+            position: absolute;
+            bottom: 350px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #ff6b00;
+            font-size: 12px;
+            max-width: 250px;
+        }
+
+        .control-item {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 107, 0, 0.3);
+        }
+
+        .control-item:last-child {
+            border-bottom: none;
+        }
+
+        .control-key {
+            background: rgba(255, 107, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .players-left {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #00d4ff;
+            font-size: 14px;
+        }
+
+        .players-count {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="canvas"></canvas>
+        
+        <!-- Main Menu -->
+        <div id="mainMenu" class="main-menu">
+            <div class="menu-content">
+                <div class="game-title">GAMEFORT</div>
+                <p style="font-size: 18px; color: #00d4ff; margin-bottom: 40px;">Battle Royale</p>
+                <button class="menu-button" onclick="startGame()">Start Game</button>
+                <button class="menu-button" onclick="showInstructions()">How to Play</button>
+            </div>
+        </div>
+
+        <!-- HUD -->
+        <div id="hud" class="hud">
+            <!-- Players Left -->
+            <div class="players-left">
+                <div>Players Left:</div>
+                <div class="players-count" id="playersLeft">99</div>
+            </div>
+
+            <!-- Minimap -->
+            <div class="minimap">
+                <canvas id="minimapCanvas" class="minimap-canvas"></canvas>
+            </div>
+
+            <!-- Player Stats -->
+            <div class="player-stats">
+                <div class="stat-row health-bar">
+                    <div class="stat-label">HP</div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill" id="healthBar" style="width: 100%"></div>
+                    </div>
+                    <div class="stat-value"><span id="healthValue">100</span>/100</div>
+                </div>
+                <div class="stat-row shield-bar">
+                    <div class="stat-label">Shield</div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill" id="shieldBar" style="width: 100%"></div>
+                    </div>
+                    <div class="stat-value"><span id="shieldValue">50</span>/50</div>
+                </div>
+            </div>
+
+            <!-- Inventory -->
+            <div class="inventory">
+                <div class="inventory-title">Inventory</div>
+                <div id="inventoryList"></div>
+            </div>
+
+            <!-- Controls Display -->
+            <div class="controls-display">
+                <div class="control-item"><span class="control-key">WASD</span>Move</div>
+                <div class="control-item"><span class="control-key">Space</span>Jump</div>
+                <div class="control-item"><span class="control-key">Mouse</span>Aim/Look</div>
+                <div class="control-item"><span class="control-key">Click</span>Shoot</div>
+                <div class="control-item"><span class="control-key">E</span>Build</div>
+                <div class="control-item"><span class="control-key">Q</span>Use Item</div>
+                <div class="control-item"><span class="control-key">R</span>Reload</div>
+            </div>
+
+            <!-- Crosshair -->
+            <div class="crosshair">
+                <div class="crosshair-line crosshair-line-h"></div>
+                <div class="crosshair-line crosshair-line-v"></div>
+            </div>
+
+            <!-- Kill Feed -->
+            <div class="kill-feed" id="killFeed"></div>
+
+            <!-- Storm Warning -->
+            <div class="storm-warning" id="stormWarning">
+                <div class="storm-warning-text">⚠️ STORM INCOMING ⚠️</div>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameOverScreen" class="game-over-screen">
+            <div class="game-over-content">
+                <div class="game-over-title" id="gameOverTitle">YOU DIED!</div>
+                <div class="game-over-stats">
+                    <p>Place: <span id="finalPlace">-</span></p>
+                    <p>Kills: <span id="finalKills">0</span></p>
+                    <p>Damage Dealt: <span id="finalDamage">0</span></p>
+                </div>
+                <button class="game-over-button" onclick="returnToMenu()">Return to Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/weapons.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/enemy.js"></script>
+</body>
+</html>
