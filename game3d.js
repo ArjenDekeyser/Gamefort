@@ -8,14 +8,14 @@
     const T = THREE, canvas = document.getElementById('canvas'), mapCanvas = document.getElementById('minimapCanvas');
     const mapCtx = mapCanvas.getContext('2d'), menu = document.getElementById('mainMenu'), hud = document.getElementById('hud'), endScreen = document.getElementById('gameOverScreen');
     const HALF = 110, keys = new Set(), clock = new T.Clock(), raycaster = new T.Raycaster();
-    const scene = new T.Scene(); scene.background = new T.Color('#b4d0c6'); scene.fog = new T.Fog('#b4d0c6', 78, 178);
+    const scene = new T.Scene(); scene.background = new T.Color('#a9bdb0'); scene.fog = new T.Fog('#a9bdb0', 78, 178);
     const renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.7)); renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap; renderer.outputEncoding = T.sRGBEncoding;
-    renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+    renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = .92;
     const camera = new T.PerspectiveCamera(76, innerWidth / innerHeight, .1, 240); camera.rotation.order = 'YXZ'; scene.add(camera);
-    scene.add(new T.HemisphereLight('#e5f5ff', '#536844', 2));
-    const sun = new T.DirectionalLight('#ffe9bd', 3.1); sun.position.set(-35, 62, 28); sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); sun.shadow.camera.left = -100; sun.shadow.camera.right = 100; sun.shadow.camera.top = 100; sun.shadow.camera.bottom = -100; scene.add(sun);
+    scene.add(new T.HemisphereLight('#e7f0e4', '#536844', 1.45));
+    const sun = new T.DirectionalLight('#ffe9bd', 2.2); sun.position.set(-35, 62, 28); sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); sun.shadow.camera.left = -100; sun.shadow.camera.right = 100; sun.shadow.camera.top = 100; sun.shadow.camera.bottom = -100; scene.add(sun);
 
     const guns = [
         { name: 'Ranger', kind: 'AR', damage: 28, rate: 180, reload: 1300, mag: 24, spread: .01, color: '#8cdaa9', rarity: 'ONGEWOON' },
@@ -29,14 +29,23 @@
         { name: 'KRATERPARK', x: 59, z: 54, color: '#9ca67b' }, { name: 'RADARPOST', x: 0, z: 83, color: '#8b9d91' }
     ];
     const mat = {
-        ground: new T.MeshStandardMaterial({ color: '#748c58', roughness: 1 }),
+        ground: new T.MeshStandardMaterial({ color: '#ffffff', roughness: 1 }),
         wood: new T.MeshStandardMaterial({ color: '#b9875b', roughness: .92 }),
+        roof: new T.MeshStandardMaterial({ color: '#66584a', roughness: .95 }),
         trunk: new T.MeshStandardMaterial({ color: '#72553a', roughness: 1 }),
-        leaf: new T.MeshStandardMaterial({ color: '#477950', roughness: 1 }),
-        leaf2: new T.MeshStandardMaterial({ color: '#628c51', roughness: 1 }),
+        leaf: new T.MeshStandardMaterial({ color: '#47744c', roughness: 1 }),
+        leaf2: new T.MeshStandardMaterial({ color: '#6d8d54', roughness: 1 }),
         player: new T.MeshStandardMaterial({ color: '#248b7d', roughness: .7 }),
         skin: new T.MeshStandardMaterial({ color: '#e4b995', roughness: .85 })
     };
+    const groundCanvas = document.createElement('canvas'); groundCanvas.width = groundCanvas.height = 512;
+    const groundCtx = groundCanvas.getContext('2d'); groundCtx.fillStyle = '#718451'; groundCtx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 1500; i++) {
+        const x = Math.random() * 512, y = Math.random() * 512, radius = 2 + Math.random() * 12;
+        groundCtx.fillStyle = ['rgba(181,177,105,.10)', 'rgba(41,80,47,.10)', 'rgba(210,194,128,.08)'][i % 3];
+        groundCtx.beginPath(); groundCtx.ellipse(x, y, radius * 1.5, radius, Math.random() * Math.PI, 0, Math.PI * 2); groundCtx.fill();
+    }
+    const groundTexture = new T.CanvasTexture(groundCanvas); groundTexture.encoding = T.sRGBEncoding; mat.ground.map = groundTexture; mat.ground.needsUpdate = true;
     let state = 'menu', player, bots = [], botParts = [], loot = [], walls = [], obstacles = [], tracers = [];
     let storm = { x: 0, z: 0, radius: 92, timer: 30, phase: 0 }, stormRing;
     let yaw = 0, pitch = 0, firing = false, touchFiring = false, touchLook = null, stick = { x: 0, y: 0 };
@@ -60,7 +69,8 @@
     function building(x, z, color, w, d, h) {
         const group = new T.Group(); group.position.set(x, 0, z); scene.add(group);
         mesh(new T.BoxGeometry(w, h, d), new T.MeshStandardMaterial({ color, roughness: .94 }), group, 0, h / 2, 0);
-        mesh(new T.BoxGeometry(w + .7, .65, d + .7), new T.MeshStandardMaterial({ color: '#584b43', roughness: .9 }), group, 0, h + .25, 0);
+        const roof = mesh(new T.ConeGeometry(Math.max(w, d) * .76, 1.8, 4), mat.roof, group, 0, h + .85, 0);
+        roof.rotation.y = Math.PI / 4;
         for (let i = 0; i < 3; i++) {
             const wx = (i - 1) * w / 3;
             mesh(new T.BoxGeometry(.9, 1.05, .12), new T.MeshStandardMaterial({ color: '#9bc4c1', roughness: .55 }), group, wx, h * .6, d / 2 + .08, false);
@@ -71,8 +81,8 @@
     function tree(x, z, scale) {
         const group = new T.Group(); group.position.set(x, 0, z); group.scale.setScalar(scale); scene.add(group);
         mesh(new T.CylinderGeometry(.22, .38, 3, 7), mat.trunk, group, 0, 1.5, 0);
-        mesh(new T.ConeGeometry(1.7, 3.2, 7), mat.leaf, group, 0, 3.15, 0);
-        mesh(new T.ConeGeometry(1.25, 2.6, 7), mat.leaf2, group, 0, 4.55, 0);
+        const crown = mesh(new T.SphereGeometry(1, 12, 10), mat.leaf, group, 0, 3.55, 0); crown.scale.set(1.6, 1.35, 1.45);
+        const crownTop = mesh(new T.SphereGeometry(1, 12, 10), mat.leaf2, group, -.35, 4.35, -.12); crownTop.scale.set(1.12, .95, 1.08);
         obstacles.push({ x, z, hx: .85 * scale, hz: .85 * scale });
     }
     function createGunModel() {
@@ -84,7 +94,6 @@
     }
     function createWorld() {
         const floor = mesh(new T.PlaneGeometry(220, 220), mat.ground, scene, 0, -.13, 0, false); floor.rotation.x = -Math.PI / 2;
-        const grid = new T.GridHelper(220, 110, '#82935f', '#82935f'); grid.position.y = -.11; grid.material.transparent = true; grid.material.opacity = .14; scene.add(grid);
         const road = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(-110, .02, -30), new T.Vector3(-60, .02, -20), new T.Vector3(-10, .02, 5), new T.Vector3(40, .02, 28), new T.Vector3(110, .02, 12)]), 90, 2.5, 8, false), new T.MeshStandardMaterial({ color: '#baa77d', roughness: 1 })); scene.add(road);
         const crossing = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(-24, .03, -110), new T.Vector3(-16, .03, -50), new T.Vector3(8, .03, 15), new T.Vector3(18, .03, 60), new T.Vector3(8, .03, 110)]), 80, 1.8, 8), new T.MeshStandardMaterial({ color: '#baa77d', roughness: 1 })); scene.add(crossing);
         places.forEach((p, index) => {
@@ -161,8 +170,8 @@
         if (!bots.some(bot => bot.alive)) finish(true);
     }
     function movePlayer(dt) {
-        const f = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0) - stick.y;
-        const s = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0) + stick.x;
+        const f = (keys.has('w') || keys.has('z') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0) - stick.y;
+        const s = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('q') || keys.has('arrowleft') ? 1 : 0) + stick.x;
         const length = Math.hypot(f, s) || 1, speed = (keys.has('shift') ? 10 : 6.6) * dt;
         const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
         const x = player.x + (fx * f + rx * s) / length * speed, z = player.z + (fz * f + rz * s) / length * speed;
@@ -264,7 +273,7 @@
     function updateInterface() {
         document.querySelector('.inventory-title').textContent = 'UITRUSTING'; document.querySelectorAll('.stat-label')[0].textContent = 'GEZONDHEID'; document.querySelectorAll('.stat-label')[1].textContent = 'SCHILD';
         document.querySelector('.players-left').innerHTML = '<div class="eyebrow">OVERLEVENDEN</div><div class="players-count" id="playersLeft">17</div>';
-        document.querySelector('.controls-display').innerHTML = '<div class="control-heading">VELDHANDLEIDING <span>01</span></div><div class="control-item"><span class="control-key">W A S D</span> Bewegen</div><div class="control-item"><span class="control-key">SHIFT</span> Sprinten</div><div class="control-item"><span class="control-key">MUIS</span> Kijken / vuren</div><div class="control-item"><span class="control-key">1 — 5</span> Wapen kiezen</div><div class="control-item"><span class="control-key">R</span> Herladen <span class="control-key">Q</span> EHBO</div><div class="control-item"><span class="control-key">E</span> Houten muur</div><div class="control-item"><span class="control-key">SPATIE</span> Ontwijkdash</div><div class="control-item"><span class="control-key">ESC</span> Pauze</div>';
+        document.querySelector('.controls-display').innerHTML = '<div class="control-heading">VELDHANDLEIDING <span>01</span></div><div class="control-item"><span class="control-key">WASD / ZQSD</span> Bewegen</div><div class="control-item"><span class="control-key">SHIFT</span> Sprinten</div><div class="control-item"><span class="control-key">MUIS</span> Kijken / vuren</div><div class="control-item"><span class="control-key">1 — 5</span> Wapen kiezen</div><div class="control-item"><span class="control-key">R</span> Herladen <span class="control-key">H</span> EHBO</div><div class="control-item"><span class="control-key">E</span> Houten muur</div><div class="control-item"><span class="control-key">SPATIE</span> Ontwijkdash</div><div class="control-item"><span class="control-key">ESC</span> Pauze</div>';
         document.querySelector('#mainMenu .menu-content').innerHTML = '<div class="menu-kicker"><i></i> SEIZOEN 01 · DE GROENE GRENS</div><h1 class="game-title">GAMEFORT</h1><p class="menu-subtitle">LAATSTE ZONE</p><div class="menu-rule"></div><p class="menu-description">Een eiland. Een storm. Blijf als laatste over.</p><div class="menu-form"><label for="difficultySelect">TEGENSTANDERS</label><select id="difficultySelect"><option>Rustig</option><option selected>Normaal</option><option>Heftig</option></select></div><button class="menu-button primary-button" onclick="startGame()"><span>DROP HET EILAND OP</span><b>→</b></button><button class="sound-button" id="soundToggle" onclick="toggleSound()">♫ GELUID AAN</button><div class="menu-foot">16 TEGENSTANDERS · 6 LANDINGSZONES · 1 KAMPIOEN</div>';
         document.querySelector('#gameOverScreen .game-over-content').innerHTML = '<div class="menu-kicker">RUN VOLTOOID</div><div class="game-over-title" id="gameOverTitle">EINDE VAN DE RUN</div><div class="game-over-stats"><div><span>PLAATS</span><strong id="finalPlace">-</strong></div><div><span>UITGESCHAKELD</span><strong id="finalKills">0</strong></div><div><span>SCHADE</span><strong id="finalDamage">0</strong></div></div><button class="game-over-button" onclick="startGame()">OPNIEUW DROPPEN →</button><button class="sound-button" onclick="returnToMenu()">TERUG NAAR MENU</button>';
         const bar = document.createElement('div'); bar.className = 'match-bar'; bar.innerHTML = '<div class="match-brand">GF <span>/ VELDOPERATIE</span></div><div class="match-stats"><span><i></i> OVERLEVENDEN <b id="playersLeftTop">17</b></span><span>ELIMINATIES <b id="killValue">0</b></span><span>MATERIAAL <b id="materialsValue">90</b></span></div><div class="match-zone">STORM SLUIT OVER <b id="stormTimer">30s</b></div>'; hud.appendChild(bar);
@@ -287,13 +296,13 @@
     function tone(frequency, duration) { if (!soundOn) return; try { audio ||= new AudioContext(); const oscillator = audio.createOscillator(), gain = audio.createGain(); oscillator.type = 'triangle'; oscillator.frequency.value = frequency; gain.gain.setValueAtTime(.04, audio.currentTime); gain.gain.exponentialRampToValueAtTime(.001, audio.currentTime + duration); oscillator.connect(gain); gain.connect(audio.destination); oscillator.start(); oscillator.stop(audio.currentTime + duration); } catch (_) { soundOn = false; } }
 
     window.startGame = startGame; window.returnToMenu = returnToMenu; window.toggleSound = toggleSound;
-    window.addEventListener('resize', () => { renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.7)); renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); const dpr = Math.min(devicePixelRatio || 1, 2), size = mapCanvas.clientWidth || 150; mapCanvas.width = size * dpr; mapCanvas.height = size * dpr; mapCtx.setTransform(dpr, 0, 0, dpr, 0, 0); });
+    window.addEventListener('resize', () => { renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.7)); renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); const dpr = Math.min(devicePixelRatio || 1, 2), size = mapCanvas.clientWidth || 150; mapCanvas.width = size * dpr; mapCanvas.height = size * dpr; mapCtx.setTransform(dpr, 0, 0, dpr, 0, 0); document.getElementById('touchControls')?.classList.toggle('visible', innerWidth < 760); });
     window.addEventListener('keydown', e => {
         const key = e.key.toLowerCase(); keys.add(key); if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) e.preventDefault(); if (e.repeat) return;
         if (state === 'paused' && key === 'enter') { state = 'playing'; clock.getDelta(); requestLock(); return; }
         if (state !== 'playing') return;
         if (key === 'escape') { document.exitPointerLock?.(); state = 'paused'; announce('PAUZE · DRUK OP ENTER OM VERDER TE SPELEN'); }
-        else if (key === 'r') reload(); else if (key === 'q') heal(); else if (key === 'e') buildWall();
+        else if (key === 'r') reload(); else if (key === 'h') heal(); else if (key === 'e') buildWall();
         else if (key >= '1' && key <= '5') { selected = Math.min(Number(key) - 1, player.weapons.length - 1); player.reloading = false; reloadUntil = 0; inventoryKey = ''; }
         else if (key === ' ') { const x = clamp(player.x - Math.sin(yaw) * 5, -108, 108), z = clamp(player.z - Math.cos(yaw) * 5, -108, 108); if (canMove(x, player.z)) player.x = x; if (canMove(player.x, z)) player.z = z; player.invulnerable = .28; }
     });
