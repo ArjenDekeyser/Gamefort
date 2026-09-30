@@ -174,18 +174,30 @@
     }
     function startGame() {
         difficulty = document.getElementById('difficultySelect')?.value || 'Normaal'; clearMatch(); createLoot();
-        const drop = places[Math.floor(Math.random() * places.length)]; player = { x: drop.x + rand(-3, 3), z: drop.z + rand(3, 8), hp: 100, shield: 50, invulnerable: 0, jumpHeight: 0, jumpVelocity: 0, grounded: true, weapons: [{ ...guns[0], ammo: 24 }], reloading: false };
+        storm = { x: 0, z: 0, radius: 92, timer: 30, phase: 0 };
+        const drop = places[Math.floor(Math.random() * places.length)];
+        let spawn;
+        for (let attempt = 0; attempt < 100 && !spawn; attempt++) {
+            const angle = rand(0, Math.PI * 2), radius = rand(13, 19);
+            const candidate = { x: drop.x + Math.cos(angle) * radius, z: drop.z + Math.sin(angle) * radius };
+            if (Math.hypot(candidate.x, candidate.z) < storm.radius - 5 && canMove(candidate.x, candidate.z)) spawn = candidate;
+        }
+        for (let attempt = 0; attempt < 200 && !spawn; attempt++) {
+            const candidate = { x: rand(-65, 65), z: rand(-65, 65) };
+            if (canMove(candidate.x, candidate.z)) spawn = candidate;
+        }
+        spawn ||= { x: -17, z: 18 };
+        player = { x: spawn.x, z: spawn.z, hp: 100, shield: 50, invulnerable: 0, jumpHeight: 0, jumpVelocity: 0, grounded: true, weapons: [{ ...guns[0], ammo: 24 }], reloading: false };
         const count = difficulty === 'Rustig' ? 12 : difficulty === 'Heftig' ? 20 : 16;
         for (let i = 0; i < count; i++) {
             let x, z; do { x = rand(-98, 98); z = rand(-98, 98); } while (Math.hypot(x - player.x, z - player.z) < 30);
             const bot = { name: ['Koraal', 'Bram', 'Pixel', 'Vonk', 'Riff', 'Nova', 'Maan', 'Flint', 'Echo', 'Sproet'][i % 10], x, z, hp: 100, shield: Math.random() > .5 ? 25 : 0, speed: rand(2.1, 3), nextShot: rand(1, 3), alive: true, dir: rand(-3, 3), strafe: Math.random() < .5 ? -1 : 1, phase: rand(0, 6), color: ['#bb6956', '#8673ae', '#4d8991', '#a47a44'][i % 4] };
             bots.push(bot); makeBot(bot);
         }
-        storm = { x: 0, z: 0, radius: 92, timer: 30, phase: 0 };
         stormRing.position.set(0, .3, 0); stormRing.scale.setScalar(storm.radius);
         selected = 0; buildIndex = 0; dashReadyAt = 0; reserve = 144; materials = 90; medkits = 2; kills = 0; damageTotal = 0; feed = []; inventoryKey = ''; lastShot = 0; reloadUntil = 0;
         yaw = 0; pitch = -.035; camera.position.set(player.x, 1.72, player.z); camera.rotation.set(pitch, yaw, 0);
-        menu.classList.add('hidden'); endScreen.classList.add('hidden'); endScreen.classList.remove('active'); hud.style.display = 'block'; state = 'playing';
+        menu.classList.add('hidden'); endScreen.classList.add('hidden'); endScreen.classList.remove('active'); document.getElementById('pauseScreen').classList.add('hidden'); hud.style.display = 'block'; state = 'playing';
         document.getElementById('touchControls').classList.toggle('visible', innerWidth < 760); announce('VERZAMEL UITRUSTING · BLIJF BINNEN DE ZONE');
         requestLock();
         clock.getDelta();
@@ -367,6 +379,12 @@
         const bar = document.createElement('div'); bar.className = 'match-bar'; bar.innerHTML = '<div class="match-brand">GF <span>/ VELDOPERATIE</span></div><div class="match-stats"><span><i></i> OVERLEVENDEN <b id="playersLeftTop">17</b></span><span>ELIMINATIES <b id="killValue">0</b></span><span>MATERIAAL <b id="materialsValue">90</b></span></div><div class="match-zone">STORM SLUIT OVER <b id="stormTimer">30s</b></div>'; hud.appendChild(bar);
         [['weaponInfo', 'weapon-info'], ['gameToast', 'game-toast'], ['buildMode', 'build-mode']].forEach(([id, cls]) => { const el = document.createElement('div'); el.id = id; el.className = cls; hud.appendChild(el); }); document.getElementById('buildMode').textContent = 'BOUWEN · HOUTEN MUUR';
         const touch = document.createElement('div'); touch.id = 'touchControls'; touch.innerHTML = '<div class="touch-stick" id="touchStick"><span></span></div><button class="touch-action touch-fire" id="touchFire">VUUR</button><button class="touch-action touch-build" id="touchBuild">BOUW</button><button class="touch-action touch-cycle" id="touchCycleBuild">MODE</button><button class="touch-action touch-heal" id="touchHeal">EHBO</button><button class="touch-action touch-jump" id="touchJump">SPRING</button><button class="touch-action touch-dash" id="touchDash">DASH</button>'; hud.appendChild(touch);
+        const pause = document.createElement('div'); pause.id = 'pauseScreen'; pause.className = 'pause-screen hidden';
+        pause.innerHTML = '<div class="pause-content"><div class="menu-kicker">VELDOPERATIE ONDERBROKEN</div><h2>PAUZE</h2><p>Je run staat stil.</p><button class="menu-button primary-button" id="resumeButton"><span>VERDER SPELEN</span><b>→</b></button><button class="pause-secondary" id="restartButton">RUN OPNIEUW STARTEN</button><button class="pause-secondary" id="leaveButton">TERUG NAAR MENU</button></div>';
+        document.getElementById('gameContainer').appendChild(pause);
+        document.getElementById('resumeButton').addEventListener('click', resumeGame);
+        document.getElementById('restartButton').addEventListener('click', startGame);
+        document.getElementById('leaveButton').addEventListener('click', returnToMenu);
         const fire = document.getElementById('touchFire'); fire.addEventListener('pointerdown', e => { e.preventDefault(); touchFiring = true; }); fire.addEventListener('pointerup', () => touchFiring = false);
         document.getElementById('touchBuild').addEventListener('click', buildWall); document.getElementById('touchCycleBuild').addEventListener('click', cycleBuild); document.getElementById('touchHeal').addEventListener('click', heal);
         document.getElementById('touchJump').addEventListener('click', jump); document.getElementById('touchDash').addEventListener('click', dash);
@@ -379,18 +397,20 @@
         setText('gameOverTitle', won ? 'OVERWINNING!' : 'EINDE VAN DE RUN'); setText('finalPlace', won ? '1e' : `${place}e`); setText('finalKills', kills); setText('finalDamage', Math.floor(damageTotal));
         endScreen.classList.remove('hidden'); requestAnimationFrame(() => endScreen.classList.add('active'));
     }
-    function returnToMenu() { state = 'menu'; document.exitPointerLock?.(); endScreen.classList.remove('active'); endScreen.classList.add('hidden'); menu.classList.remove('hidden'); hud.style.display = 'none'; clearMatch(); loot.forEach(item => scene.remove(item.mesh)); loot = []; }
+    function pauseGame() { if (state !== 'playing') return; state = 'paused'; keys.clear(); document.exitPointerLock?.(); document.getElementById('pauseScreen').classList.remove('hidden'); }
+    function resumeGame() { if (state !== 'paused') return; state = 'playing'; keys.clear(); document.getElementById('pauseScreen').classList.add('hidden'); clock.getDelta(); requestLock(); }
+    function returnToMenu() { state = 'menu'; document.exitPointerLock?.(); document.getElementById('pauseScreen')?.classList.add('hidden'); endScreen.classList.remove('active'); endScreen.classList.add('hidden'); menu.classList.remove('hidden'); hud.style.display = 'none'; clearMatch(); loot.forEach(item => scene.remove(item.mesh)); loot = []; }
     function announce(message) { toast = message; toastUntil = performance.now() + 2100; const popup = document.getElementById('gameToast'); if (popup) { popup.textContent = message; popup.classList.add('visible'); } }
     function toggleSound() { soundOn = !soundOn; const button = document.getElementById('soundToggle'); if (button) button.textContent = soundOn ? '♫ GELUID AAN' : '♫ GELUID UIT'; if (soundOn) tone(540, .08); }
     function tone(frequency, duration) { if (!soundOn) return; try { audio ||= new AudioContext(); const oscillator = audio.createOscillator(), gain = audio.createGain(); oscillator.type = 'triangle'; oscillator.frequency.value = frequency; gain.gain.setValueAtTime(.04, audio.currentTime); gain.gain.exponentialRampToValueAtTime(.001, audio.currentTime + duration); oscillator.connect(gain); gain.connect(audio.destination); oscillator.start(); oscillator.stop(audio.currentTime + duration); } catch (_) { soundOn = false; } }
 
-    window.startGame = startGame; window.returnToMenu = returnToMenu; window.toggleSound = toggleSound;
+    window.startGame = startGame; window.returnToMenu = returnToMenu; window.toggleSound = toggleSound; window.resumeGame = resumeGame;
     window.addEventListener('resize', () => { renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.7)); renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); const dpr = Math.min(devicePixelRatio || 1, 2), size = mapCanvas.clientWidth || 150; mapCanvas.width = size * dpr; mapCanvas.height = size * dpr; mapCtx.setTransform(dpr, 0, 0, dpr, 0, 0); document.getElementById('touchControls')?.classList.toggle('visible', innerWidth < 760); });
     window.addEventListener('keydown', e => {
         const key = e.key.toLowerCase(); keys.add(key); if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) e.preventDefault(); if (e.repeat) return;
-        if (state === 'paused' && key === 'enter') { state = 'playing'; clock.getDelta(); requestLock(); return; }
+        if (state === 'paused' && (key === 'enter' || key === 'escape')) { resumeGame(); return; }
         if (state !== 'playing') return;
-        if (key === 'escape') { document.exitPointerLock?.(); state = 'paused'; announce('PAUZE · DRUK OP ENTER OM VERDER TE SPELEN'); }
+        if (key === 'escape') { pauseGame(); }
         else if (key === 'r') reload(); else if (key === 'h') heal(); else if (key === 'e') buildWall(); else if (key === 'b') cycleBuild();
         else if (key >= '1' && key <= '5') { selected = Math.min(Number(key) - 1, player.weapons.length - 1); player.reloading = false; reloadUntil = 0; inventoryKey = ''; }
         else if (key === ' ') jump();

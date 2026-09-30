@@ -13,11 +13,11 @@ Spel
 
 Bediening
 ---------
-- `W A S D`: bewegen; `Shift`: sprinten; muis: kijken.
-- Klik/ingedrukt houden: vuren; `1` tot `5`: wapen kiezen; `R`: herladen.
-- `Q`: EHBO gebruiken; `E`: houten muur bouwen; `Spatie`: ontwijkmoment.
-- `Escape`: pauzeren; `Enter`: hervatten.
-- Mobiel: linker joystick, veeg om te kijken, gebruik de actieknoppen.
+- `W A S D` of `Z Q S D`: bewegen; `Shift`: sprinten; muis: kijken.
+- Linkermuisknop: vuren; `1` tot `5`: wapen kiezen; `R`: herladen; `H`: EHBO.
+- `B`: wissel bouwdeel; `E`: plaatsen; `Spatie`: springen; rechtermuisknop: dash.
+- `Escape`: pauzemenu; kies hervatten, opnieuw starten of terug naar menu. `Enter` hervat.
+- Mobiel: linker joystick, veeg om te kijken, gebruik de schermknoppen.
 
 
 

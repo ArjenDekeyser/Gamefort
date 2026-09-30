@@ -483,6 +483,13 @@
         .game-toast { position: absolute; z-index: 4; left: 50%; top: 19%; transform: translate(-50%, -8px); opacity: 0; padding: 10px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--paper); font-size: 11px; font-weight: 800; letter-spacing: 1px; transition: opacity .2s, transform .2s; pointer-events: none; }.game-toast.visible { opacity: 1; transform: translate(-50%, 0); }
         .build-mode { position: absolute; z-index: 3; left: 50%; bottom: 85px; transform: translateX(-50%); display: none; padding: 7px 11px; border-radius: 4px; background: var(--panel); color: var(--gold); font-size: 9px; font-weight: 800; letter-spacing: 1px; }.build-mode.active { display: block; }
         .game-over-screen { background: rgba(12, 26, 23, .91); }.game-over-screen.hidden { display: none; }.game-over-content { width: min(480px, calc(100% - 40px)); }.game-over-title { margin-top: 16px; color: var(--paper); font-size: 42px; }.game-over-stats { display: flex; justify-content: space-between; gap: 10px; margin: 25px 0; }.game-over-stats div { display: grid; gap: 7px; text-align: left; }.game-over-stats span { color: #aebdae; }.game-over-stats strong { color: var(--mint); font-size: 25px; }.game-over-button { justify-content: center; }
+        .pause-screen { position: absolute; inset: 0; z-index: 1001; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(12, 26, 23, .88); pointer-events: auto; }
+        .pause-screen.hidden { display: none; }
+        .pause-content { width: min(390px, 100%); padding: 28px; border: 1px solid var(--line); border-top: 2px solid var(--mint); background: rgba(17, 32, 28, .97); }
+        .pause-content h2 { margin: 16px 0 5px; color: var(--paper); font-size: 48px; }
+        .pause-content p { margin-bottom: 23px; color: #b8c4b4; font-size: 14px; }
+        .pause-secondary { width: 100%; margin-top: 9px; padding: 12px 14px; border: 1px solid var(--line); background: transparent; color: var(--paper); font: inherit; font-size: 11px; font-weight: 800; letter-spacing: 1px; cursor: pointer; }
+        .pause-secondary:hover { border-color: var(--mint); color: var(--mint); }
         #touchControls { display: none; }
         @media (max-width: 760px) {
             .main-menu { padding: 36px 25px; background: linear-gradient(90deg, rgba(12,26,23,.94), rgba(12,26,23,.7)), #344c38; }
