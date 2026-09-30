@@ -502,6 +502,169 @@
             #touchControls.visible { display: block; }.touch-stick { position: absolute; left: 22px; bottom: 146px; width: 100px; height: 100px; border: 1px solid rgba(244,240,223,.4); border-radius: 50%; background: rgba(17,32,28,.42); touch-action: none; }.touch-stick span { position: absolute; left: 50%; top: 50%; width: 39px; height: 39px; transform: translate(calc(-50% + var(--sx, 0px)), calc(-50% + var(--sy, 0px))); border-radius: 50%; background: rgba(139,224,190,.75); }.touch-action { position: absolute; z-index: 5; width: 58px; height: 58px; border: 1px solid rgba(244,240,223,.5); border-radius: 50%; background: rgba(17,32,28,.7); color: var(--paper); font-size: 9px; font-weight: 800; touch-action: none; }.touch-fire { right: 22px; bottom: 148px; width: 72px; height: 72px; background: rgba(176,84,61,.8); }.touch-build { right: 105px; bottom: 222px; }.touch-cycle { right: 22px; bottom: 230px; }.touch-heal { right: 105px; bottom: 140px; }.touch-jump { right: 105px; bottom: 304px; }.touch-dash { right: 22px; bottom: 308px; }
         }
         .inventory, .touch-stick, .touch-action { pointer-events: auto; }
+        /* Visual polish: layered glass panels, clearer hierarchy, and responsive spacing. */
+        :root {
+            --panel: rgba(14, 27, 23, .84);
+            --line: rgba(221, 232, 207, .22);
+            --mint: #8bd9aa;
+            --gold: #efbd78;
+            --paper: #f7f3e7;
+        }
+        body { background: #18251f; }
+        #gameContainer::after {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 48%, rgba(8, 17, 14, .24) 100%);
+        }
+        .main-menu {
+            background: radial-gradient(ellipse at 78% 48%, rgba(111, 145, 91, .18), transparent 34%),
+                        linear-gradient(90deg, rgba(10, 22, 19, .97) 0%, rgba(10, 22, 19, .84) 38%, rgba(10, 22, 19, .14) 100%),
+                        linear-gradient(0deg, rgba(10, 22, 19, .52), transparent 60%), #344c38;
+        }
+        .menu-content { padding: 8px 0; }
+        .game-title { font-size: clamp(64px, 8vw, 94px); letter-spacing: -3px; text-shadow: 0 8px 35px rgba(0,0,0,.42); }
+        .menu-subtitle { letter-spacing: 6px; }
+        .menu-rule { box-shadow: 0 0 18px rgba(139, 217, 170, .38); }
+        .menu-form { border-radius: 8px; border-color: rgba(221,232,207,.25); background: rgba(9,20,17,.54); backdrop-filter: blur(12px); }
+        .menu-form select:focus-visible, button:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
+        .menu-button, .game-over-button { min-height: 54px; border-radius: 7px; box-shadow: 0 8px 24px rgba(83, 157, 115, .18); }
+        .menu-button:hover, .game-over-button:hover { box-shadow: 0 10px 28px rgba(83, 157, 115, .3); }
+        .match-bar { background: linear-gradient(180deg, rgba(11,23,19,.94), rgba(14,27,23,.82)); box-shadow: 0 8px 28px rgba(0,0,0,.16); backdrop-filter: blur(14px); }
+        .players-left, .player-stats, .inventory, .controls-display, .kill-feed, .weapon-info, .game-toast, .build-mode {
+            box-shadow: 0 12px 34px rgba(0,0,0,.2); backdrop-filter: blur(12px);
+        }
+        .players-left, .player-stats, .inventory { border-radius: 9px; }
+        .minimap { border-radius: 10px; box-shadow: 0 10px 32px rgba(0,0,0,.34); }
+        .stat-bar { height: 8px; border-radius: 8px; background: rgba(255,255,255,.12); }
+        .stat-bar-fill { border-radius: inherit; box-shadow: 0 0 12px currentColor; }
+        .health-bar .stat-bar-fill { color: #8bdfa6; }
+        .shield-bar .stat-bar-fill { color: #76cde6; }
+        .inventory-item { transition: background .18s, border-color .18s, transform .18s; }
+        .inventory-item:hover { transform: translateX(-2px); background: rgba(255,255,255,.1); }
+        .inventory-item.selected { box-shadow: inset 0 0 18px rgba(139,224,190,.07); }
+        .controls-display { border-radius: 8px; }
+        .control-key { border: 1px solid rgba(239,189,120,.24); }
+        .crosshair { filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
+        .kill-feed { border-radius: 7px; }
+        .storm-warning { box-shadow: 0 10px 35px rgba(0,0,0,.28); backdrop-filter: blur(10px); }
+        .weapon-info { min-width: 156px; justify-content: center; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+        .game-over-screen { backdrop-filter: blur(8px); }
+        .game-over-content { padding: clamp(24px, 5vw, 42px); border: 1px solid var(--line); border-top: 2px solid var(--mint); border-radius: 12px; background: rgba(17,32,28,.88); box-shadow: 0 24px 80px rgba(0,0,0,.4); }
+        .game-over-title { line-height: 1.08; }
+        .game-over-stats > div { flex: 1; padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.035); }
+        .pause-content { border-radius: 11px; box-shadow: 0 24px 80px rgba(0,0,0,.4); backdrop-filter: blur(14px); }
+        .pause-secondary { border-radius: 6px; transition: border-color .18s, color .18s, background .18s; }
+        .touch-stick, .touch-action { box-shadow: 0 8px 24px rgba(0,0,0,.28); backdrop-filter: blur(8px); }
+        @media (max-width: 760px) {
+            .main-menu { background: radial-gradient(ellipse at 85% 45%, rgba(111,145,91,.16), transparent 45%), linear-gradient(90deg, rgba(10,22,19,.96), rgba(10,22,19,.74)), #344c38; }
+            .game-title { font-size: clamp(52px, 13vw, 68px); letter-spacing: -2px; }
+            .menu-subtitle { letter-spacing: 4px; }
+            .match-bar { backdrop-filter: blur(10px); }
+            .minimap { border-radius: 8px; }
+            .player-stats, .inventory { bottom: max(12px, env(safe-area-inset-bottom)); }
+            .weapon-info { bottom: 142px; }
+            .game-over-stats > div { padding: 10px 7px; }
+        }
+        @media (max-height: 650px) and (min-width: 761px) {
+            .main-menu { padding-top: 34px; padding-bottom: 34px; }
+            .game-title { margin-top: 14px; font-size: 66px; }
+            .menu-rule { margin: 16px 0 12px; }
+            .menu-description { margin-bottom: 16px; }
+            .menu-foot { margin-top: 16px; }
+            .controls-display { bottom: 148px; }
+        }
+        .hud.zone-danger::before {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            border: 5px solid rgba(255, 106, 82, .72);
+            box-shadow: inset 0 0 110px rgba(206, 54, 42, .24), 0 0 24px rgba(255, 91, 67, .24);
+            animation: zoneDangerPulse 1.25s ease-in-out infinite alternate;
+        }
+        @keyframes zoneDangerPulse {
+            from { border-color: rgba(255, 106, 82, .48); box-shadow: inset 0 0 72px rgba(206,54,42,.14); }
+            to { border-color: rgba(255, 174, 113, .88); box-shadow: inset 0 0 130px rgba(206,54,42,.3); }
+        }
+        .storm-warning.active {
+            border: 2px solid #ffc0a4; background: rgba(144, 48, 43, .92);
+            box-shadow: 0 0 16px rgba(255, 130, 97, .58), 0 12px 38px rgba(0,0,0,.38);
+            animation: stormAlert 1.1s ease-in-out infinite alternate;
+        }
+        @keyframes stormAlert { to { transform: translate(-50%, -50%) scale(1.045); } }
+        .weapon-prompt { position: absolute; z-index: 4; top: 57%; left: 50%; transform: translateX(-50%); padding: 10px 16px; border: 1px solid rgba(239,189,120,.65); border-radius: 7px; background: rgba(14,27,23,.9); color: var(--gold); font-size: 12px; font-weight: 900; letter-spacing: 1px; box-shadow: 0 10px 30px rgba(0,0,0,.35); opacity: 0; transition: opacity .15s; pointer-events: none; white-space: nowrap; }
+        .weapon-prompt.visible { opacity: 1; }
+        .inventory-item.empty-slot { opacity: .55; border-style: dashed; }
+        .inventory-item.empty-slot .inventory-item-name small { color: #9eaa9d; }
+        @media (max-width: 760px) {
+            .weapon-prompt { top: 51%; font-size: 10px; }
+            .touch-pickup { display: none; right: 22px; bottom: 390px; width: 64px; height: 42px; border-radius: 7px; background: rgba(196,145,71,.92); }
+            #touchControls.visible .touch-pickup { display: block; }
+        }
+        /* Full visual pass: crisp tactical HUD, brighter loot accents, and a more cinematic menu. */
+        :root { --panel: rgba(10, 20, 19, .78); --line: rgba(220, 235, 222, .2); --mint: #9de6bd; --gold: #ffd18a; }
+        body { font-family: 'Trebuchet MS', 'Arial', sans-serif; letter-spacing: .15px; }
+        #gameContainer::before {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: .23;
+            background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.018) 4px 5px);
+            mix-blend-mode: screen;
+        }
+        .main-menu {
+            background:
+                radial-gradient(ellipse at 78% 50%, rgba(172, 212, 145, .23), transparent 31%),
+                radial-gradient(ellipse at 74% 82%, rgba(202, 153, 93, .19), transparent 26%),
+                linear-gradient(90deg, rgba(7,16,16,.98) 0%, rgba(8,20,18,.88) 38%, rgba(8,20,18,.16) 100%),
+                linear-gradient(0deg, rgba(4,12,11,.62), transparent 55%), #304b3b;
+        }
+        .menu-content { max-width: 520px; }
+        .game-title {
+            font-size: clamp(68px, 9vw, 112px); line-height: .86; letter-spacing: -5px;
+            background: linear-gradient(180deg, #fff8e9 8%, #dcebd1 50%, #91bea0 100%);
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+            filter: drop-shadow(0 8px 26px rgba(0,0,0,.38));
+        }
+        .menu-subtitle { color: #f1c989; font-size: 11px; font-weight: 900; letter-spacing: 7px; }
+        .menu-rule { width: 92px; height: 3px; margin: 20px 0 16px; background: linear-gradient(90deg, #a5e2b9, #ffd18a); box-shadow: 0 0 20px rgba(157,230,189,.4); }
+        .menu-description { color: rgba(245,245,230,.77); line-height: 1.65; }
+        .menu-form {
+            margin-top: 22px; padding: 18px; border: 1px solid rgba(221,232,207,.22); border-radius: 10px;
+            background: linear-gradient(145deg, rgba(18,35,30,.78), rgba(10,19,18,.55));
+            box-shadow: inset 0 1px rgba(255,255,255,.07), 0 20px 50px rgba(0,0,0,.2); backdrop-filter: blur(16px);
+        }
+        .menu-form label { color: #bed2c1; font-size: 10px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+        .menu-form select { min-height: 43px; border: 1px solid rgba(203,222,203,.2); border-radius: 6px; color: #f6f0df; background-color: rgba(6,14,13,.72); }
+        .menu-button, .game-over-button { border: 1px solid rgba(222,248,219,.34); border-radius: 7px; background: linear-gradient(135deg,#a7dfad,#6eb38d); color: #14251d; font-weight: 1000; letter-spacing: 1.5px; text-shadow: 0 1px rgba(255,255,255,.2); box-shadow: 0 10px 32px rgba(102,182,129,.24), inset 0 1px rgba(255,255,255,.45); transition: transform .16s, filter .16s, box-shadow .16s; }
+        .menu-button:hover, .game-over-button:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 14px 36px rgba(102,182,129,.34), inset 0 1px rgba(255,255,255,.5); }
+        .match-bar { border-bottom: 1px solid rgba(199,226,210,.18); background: linear-gradient(180deg, rgba(8,18,17,.93), rgba(10,20,19,.52)); }
+        .players-left, .player-stats, .inventory, .controls-display, .kill-feed, .weapon-info, .game-toast, .build-mode, .minimap {
+            border: 1px solid rgba(222,235,219,.2); background-color: var(--panel); backdrop-filter: blur(14px);
+            box-shadow: 0 14px 40px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.07);
+        }
+        .players-left, .player-stats, .inventory, .controls-display, .kill-feed, .weapon-info, .game-toast, .build-mode { border-radius: 8px; }
+        .player-stats, .inventory { padding: 14px 16px; }
+        .stat-label { color: var(--mint); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+        .stat-value { font-variant-numeric: tabular-nums; font-weight: 900; text-shadow: 0 1px 12px rgba(255,255,255,.18); }
+        .stat-bar { height: 9px; border: 1px solid rgba(255,255,255,.12); background: rgba(4,10,10,.48); }
+        .health-bar .stat-bar-fill { background: linear-gradient(90deg,#6ec985,#b2f2a9); box-shadow: 0 0 14px rgba(119,225,142,.44); }
+        .shield-bar .stat-bar-fill { background: linear-gradient(90deg,#4c9fde,#9ceeff); box-shadow: 0 0 14px rgba(91,190,240,.46); }
+        .inventory { border-top: 2px solid rgba(157,230,189,.7); }
+        .inventory-title { color: #f4d29b; font-size: 10px; font-weight: 1000; letter-spacing: 2px; text-transform: uppercase; }
+        .inventory-item { border: 1px solid rgba(230,239,220,.14); border-radius: 6px; background: linear-gradient(135deg,rgba(255,255,255,.075),rgba(255,255,255,.025)); }
+        .inventory-item.selected { border-color: #9de6bd; background: linear-gradient(135deg,rgba(119,206,159,.23),rgba(255,255,255,.04)); box-shadow: 0 0 18px rgba(111,218,157,.13), inset 0 0 14px rgba(139,224,190,.08); }
+        .inventory-item.empty-slot { border-color: rgba(237,229,202,.12); }
+        .minimap { overflow: hidden; border: 2px solid rgba(206,239,213,.76); border-radius: 9px; box-shadow: 0 0 0 4px rgba(8,17,16,.52), 0 12px 38px rgba(0,0,0,.4); }
+        .minimap::after { content: "FIELD MAP"; position: absolute; top: 5px; left: 7px; padding: 3px 5px; border-radius: 3px; color: #eff8e8; background: rgba(8,18,17,.76); font-size: 8px; font-weight: 900; letter-spacing: 1.4px; pointer-events: none; }
+        .controls-display { border-color: rgba(231,222,193,.17); }
+        .control-key { border: 1px solid rgba(245,211,153,.42); border-radius: 4px; color: #ffe2af; background: rgba(255,209,138,.08); }
+        .crosshair { filter: drop-shadow(0 0 3px rgba(0,0,0,.95)) drop-shadow(0 0 5px rgba(214,245,225,.32)); }
+        .weapon-info { border-left: 3px solid #a8e8bd; }
+        .weapon-prompt { border: 1px solid rgba(255,217,155,.65); border-radius: 8px; background: linear-gradient(135deg,rgba(27,42,34,.95),rgba(12,21,20,.94)); color: #ffdfaa; box-shadow: 0 0 30px rgba(255,189,89,.14), 0 14px 38px rgba(0,0,0,.42); }
+        .kill-feed { border-left: 2px solid rgba(157,230,189,.65); }
+        .storm-warning.active { border-radius: 8px; text-transform: uppercase; letter-spacing: 1.5px; }
+        .game-over-screen { background: radial-gradient(ellipse,rgba(10,18,17,.72),rgba(3,8,8,.9)); }
+        .game-over-content, .pause-content { border: 1px solid rgba(221,232,207,.23); border-top: 2px solid #a4e3b7; border-radius: 12px; background: linear-gradient(145deg,rgba(23,40,34,.96),rgba(9,18,17,.96)); box-shadow: 0 28px 90px rgba(0,0,0,.52), inset 0 1px rgba(255,255,255,.08); }
+        .game-over-title { color: #fff1d7; text-shadow: 0 0 35px rgba(255,157,111,.2); }
+        @media (max-width: 760px) {
+            .game-title { font-size: clamp(58px,15vw,82px); letter-spacing: -3px; }
+            .menu-form { padding: 14px; }
+            .minimap { box-shadow: 0 0 0 3px rgba(8,17,16,.5), 0 8px 24px rgba(0,0,0,.38); }
+        }
     </style>
 </head>
 <body>
@@ -557,13 +720,15 @@
 
             <!-- Controls Display -->
             <div class="controls-display">
-                <div class="control-item"><span class="control-key">WASD</span>Move</div>
-                <div class="control-item"><span class="control-key">Space</span>Jump</div>
-                <div class="control-item"><span class="control-key">Mouse</span>Aim/Look</div>
-                <div class="control-item"><span class="control-key">Click</span>Shoot</div>
-                <div class="control-item"><span class="control-key">E</span>Build</div>
-                <div class="control-item"><span class="control-key">Q</span>Use Item</div>
-                <div class="control-item"><span class="control-key">R</span>Reload</div>
+                <div class="control-item"><span class="control-key">ZQSD</span>Bewegen</div>
+                <div class="control-item"><span class="control-key">MUISWIEL</span>Wapen wisselen</div>
+                <div class="control-item"><span class="control-key">&amp; é " ' (</span>Wapenslots 1–5</div>
+                <div class="control-item"><span class="control-key">C · T</span>Muur · lage muur</div>
+                <div class="control-item"><span class="control-key">V · X · G</span>Vloer · helling · dak</div>
+                <div class="control-item"><span class="control-key">E</span>Bouwwerk plaatsen</div>
+                <div class="control-item"><span class="control-key">B</span>Bouwdeel wisselen</div>
+                <div class="control-item"><span class="control-key">SPATIE</span>Springen</div>
+                <div class="control-item"><span class="control-key">R · H</span>Herlaad · EHBO</div>
             </div>
 
             <!-- Crosshair -->
